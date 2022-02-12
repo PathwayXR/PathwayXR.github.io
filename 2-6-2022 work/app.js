@@ -1,6 +1,5 @@
 import * as THREE from '../../libs/three/three.module.js';
-import { VRButton } from '../../libs/VRButton.js';
-import { XRControllerModelFactory } from '../../libs/three/jsm/XRControllerModelFactory.js';
+import { VRButton } from '../../libs/three/jsm/VRButton.js';
 import { BoxLineGeometry } from '../../libs/three/jsm/BoxLineGeometry.js';
 import { Stats } from '../../libs/stats.module.js';
 import { OrbitControls } from '../../libs/three/jsm/OrbitControls.js';
@@ -37,14 +36,10 @@ class App{
         this.controls.update();
         
         this.stats = new Stats();
-        document.body.appendChild( this.stats.dom )  ;
-        
-        this.raycaster = new THREE.Raycaster();
-        this.workingMatrix = new THREE.Matrix4();
-        this.workingVector = new THREE.Vector3();
+        container.appendChild( this.stats.dom );
         
         this.initScene();
-        this.setupXR();
+        this.setupVR();
         
         window.addEventListener('resize', this.resize.bind(this) );
         
@@ -59,7 +54,7 @@ class App{
         this.radius = 0.08;
         
         this.room = new THREE.LineSegments(
-					new BoxLineGeometry( 6, 6, 6, 10, 10, 10 ),
+					new BoxLineGeometry( 6, 6, 6, 100, 100, 100 ),
 					new THREE.LineBasicMaterial( { color: 0x808080 } )
 				);
         this.room.geometry.translate( 0, 3, 0 );
@@ -67,7 +62,7 @@ class App{
         
         const geometry = new THREE.IcosahedronBufferGeometry( this.radius, 2 );
 
-        for ( let i = 0; i < 200; i ++ ) {
+        for ( let i = 0; i < 500; i ++ ) {
 
             const object = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color: Math.random() * 0xffffff } ) );
 
@@ -80,47 +75,9 @@ class App{
         }
     }
     
-    setupXR(){
+    setupVR(){
         this.renderer.xr.enabled = true;
-        
-        const button = new VRButton( this.renderer );
-
-        this.controllers = this.buildControllers();
-    }
-    
-    buildControllers(){
-        const controllerModelFactory = new XRControllerModelFactory();
-
-        const geometry = new THREE.BufferGeometry().setFromPoints( [
-                new THREE.Vector3(0,0,0),
-                new THREE.Vector3(0,0,-1)
-        ]);
-        const line = new THREE.Line( geometry );
-        line.name = 'line'
-        line.scale.z = 0;
-
-        const controllers = [];
-
-        for(let i=0; i<=1; i++){
-            const controller = this.renderer.xr.getController( i );
-            controller.add ( line.clone() );
-            controller.userData.selectPressed = false;
-            this.scene.add(controller)
-
-            controllers.push( controller );
-
-            const grip = this.renderer.xr.getControllerGrip( i );
-            grip.add( controllerModelFactory.createControllerModel( grip ));
-            this.scene.add( grip );
-        
-        }
-
-        return controllers;
-        
-    }
-    
-    handleController( controller ){
-        
+        document.body.appendChild( VRButton.createButton( this.renderer ) );
     }
     
     resize(){
@@ -131,13 +88,6 @@ class App{
     
 	render( ) {   
         this.stats.update();
-        
-        if (this.controllers ){
-            const self = this;
-            this.controllers.forEach( ( controller) => { 
-                self.handleController( controller ) 
-            });
-        }
         
         this.renderer.render( this.scene, this.camera );
     }
