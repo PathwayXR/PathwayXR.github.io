@@ -136,7 +136,11 @@ class App{
                 loader = new GLTFLoader().setPath('../../assets/');
 
                 loader.load('flash-light.glb',
-                            (gltf) => { controller.add( gltf.scene );
+                            (gltf) => { 
+                                const flashLight = gltf.scene.children[2];
+                                const scale = 0.6;
+                                flashLight.scale.set( scale, scale, scale );
+                                controller.add( flashLight );
 
                             })
                     
