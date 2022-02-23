@@ -141,6 +141,17 @@ class App{
                                 const scale = 0.6;
                                 flashLight.scale.set( scale, scale, scale );
                                 controller.add( flashLight );
+                                self.spotlight = new THREE.Group();
+
+                                const spotlight = new THREE.Spotlight( 0xFFFFFF, 2, 12, MATH.PI/15,0.3);
+                                spotlight.position.set(0,0,0);
+                                spotlight.target.position.set(0,0,-1);
+                                self.spotlight.add( spotlight.target );
+                                self.spotlight.add( spotlight );
+
+                                controller.add( self.spotlight );
+                                self.spotlight.visible = false;
+
 
                             })
                     
