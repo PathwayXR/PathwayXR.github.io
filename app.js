@@ -1,11 +1,18 @@
 import * as THREE from '../../libs/three/three.module.js';
 import { VRButton } from '../../libs/VRButton.js';
+import { CanvasUI } from '../../libs/CanvasUI.js';
+import { XRControllerModelFactory } from '../../libs/three/jsm/XRControllerModelFactory.js';
 import { BoxLineGeometry } from '../../libs/three/jsm/BoxLineGeometry.js';
-import { GLTFLoader } from '../../libs/three/jsm/GLTFLoader.js';
 import { Stats } from '../../libs/stats.module.js';
 import { OrbitControls } from '../../libs/three/jsm/OrbitControls.js';
-import { SpotLightVolumetricMaterial } from '../../libs/SpotLightVolumetricMaterial.js';
+import {
+	Constants as MotionControllerConstants,
+	fetchProfile,
+	MotionController
+} from '../../libs/three/jsm/motion-controllers.module.js';
 
+const DEFAULT_PROFILES_PATH = 'https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles';
+const DEFAULT_PROFILE = 'generic-trigger';
 
 class App{
 	constructor(){
@@ -38,6 +45,7 @@ class App{
         this.controls.update();
         
         this.stats = new Stats();
+        document.body.appendChild( this.stats.dom );
         
         this.raycaster = new THREE.Raycaster();
         this.workingMatrix = new THREE.Matrix4();
@@ -81,104 +89,198 @@ class App{
         
         this.highlight = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { color: 0xffffff, side: THREE.BackSide } ) );
         this.highlight.scale.set(1.2, 1.2, 1.2);
+        this.scene.add(this.highlight);
+        
+        this.ui = this.createUI();
+    }
+    
+    createUI(){
+        const config = {
+            panelSize: { height: 0.5 },
+            height: 256,
+            body: { type: "text" }
+        }
+        const ui = new CanvasUI( { body: "" }, config );
+        ui.mesh.position.set(0, 1.5, -1);
+        this.scene.add( ui.mesh );
+        return ui;
+    }
+    
+    //{"trigger":{"button":0},"touchpad":{"button":2,"xAxis":0,"yAxis":1}},"squeeze":{"button":1},"thumbstick":{"button":3,"xAxis":2,"yAxis":3},"button":{"button":6}}}
+    createButtonStates(components){
+
+        const buttonStates = {};
+        this.gamepadIndices = components;
+        
+        Object.keys( components ).forEach( (key) => {
+            if ( key.indexOf('touchpad')!=-1 || key.indexOf('thumbstick')!=-1){
+                buttonStates[key] = { button: 0, xAxis: 0, yAxis: 0 };
+            }else{
+                buttonStates[key] = 0; 
+            }
+        })
+        
+        this.buttonStates = buttonStates;
+    }
+    
+    updateUI(){
+        const str = JSON.stringify( this.buttonStates );
+        if (this.strStates === undefined || ( str != this.strStates )){
+            this.ui.updateElement( 'body', str );
+            this.ui.update(); 
+            this.strStates = str;
+        }
+    }
+    
+    updateGamepadState(){
+        
     }
     
     setupXR(){
         this.renderer.xr.enabled = true;
         
         const button = new VRButton( this.renderer );
-        
+
         const self = this;
         
-        function onSelectStart() {
-            
-            this.userData.selectPressed = true;
-            if (self.spotlight) self.spotlight.visible = true;
-        }
-
-        function onSelectEnd() {
-
-            self.highlight.visible = false;
-            this.userData.selectPressed = false;
-            if (self.spotlight) self.spotlight.visible = false;
+        function onConnected( event ){
             
         }
+         
+        const controller = this.renderer.xr.getController( 0 );
         
+        controller.addEventListener( 'connected', onConnected );
+        
+        const modelFactory = new XRControllerModelFactory();
+        
+        const geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0,0,0 ), new THREE.Vector3( 0,0,-1 ) ] );
 
-        this.controller = this.renderer.xr.getController( 0 );
-        this.controller.addEventListener( 'selectstart', onSelectStart );
-        this.controller.addEventListener( 'selectend', onSelectEnd );
-        this.controller.addEventListener( 'connected', function ( event ) {
-
-            self.buildController.call(self, event.data, this );
-
-        } );
-        this.controller.addEventListener( 'disconnected', function () {
-
-            while(this.children.length>0) this.remove( this.children[ 0 ] );
-            self.controller = null;
-
-        } );
-        this.scene.add( this.controller );
- 
-        this.scene.add(this.highlight);
+        const line = new THREE.Line( geometry );
+        line.scale.z = 0;
+        
+        this.controllers = {};
+        this.controllers.right = this.buildController( 0, line, modelFactory );
+        this.controllers.left = this.buildController( 1, line, modelFactory );
 
     }
     
-    buildController( data, controller ) {
-        let geometry, material, loader;
+    buildController( index, line, modelFactory ){
+        const controller = this.renderer.xr.getController( index );
         
+        controller.userData.selectPressed = false;
+        controller.userData.index = index;
+        
+        if (line) controller.add( line.clone() );
+        
+        this.scene.add( controller );
+        
+        let grip;
+        
+        if ( modelFactory ){
+            grip = this.renderer.xr.getControllerGrip( index );
+            grip.add( modelFactory.createControllerModel( grip ));
+            this.scene.add( grip );
+        }
+        
+        return { controller, grip };
+    }
+    
+    updateControllers(info){
         const self = this;
         
-        switch ( data.targetRayMode ) {
-            
-            case 'tracked-pointer':
-   
-                loader = new GLTFLoader().setPath('../../assets/');
-
-                loader.load('flash-light.glb',
-                            (gltf) => { 
-                                const flashLight = gltf.scene.children[2];
-                                const scale = 0.6;
-                                flashLight.scale.set(scale, scale, scale);
-                                controller.add( flashLight );
-                                self.spotlight = new THREE.Group();
-                                const spotlight = new THREE.SpotLight( 0xFFFFFF, 2, 12, Math.PI/15, 0.3 );
-                                geometry = new THREE.CylinderBufferGeometry(0.03, 1, 5, 32, 5, true);
-                                geometry.rotateX( Math.PI/2 );
-                                material = new SpotLightVolumetricMaterial();
-                                const cone = new THREE.Mesh( geometry, material );
-                                cone.translateZ( -2.6 );
-                            
-                                spotlight.position.set(0,0,0);
-                                spotlight.target.position.set(0,0,-1);
-                                self.spotlight.add( spotlight.target );
-                                self.spotlight.add( spotlight );
-                                self.spotlight.add( cone );
-                                
-                                controller.add(self.spotlight);
-                                self.spotlight.visible = false;
-                            },
-                            null,
-                            (error) =>  {
-                                console.error( 'An error occurred' );    
-                            }
-                        );
-                        
-                        break;
-                        
-                    case 'gaze':
-
-                geometry = new THREE.RingBufferGeometry( 0.02, 0.04, 32 ).translate( 0, 0, - 1 );
-                material = new THREE.MeshBasicMaterial( { opacity: 0.5, transparent: true } );
-                controller.add( new THREE.Mesh( geometry, material ) )
-
+        function onSelectStart( ){
+            this.userData.selectPressed = true;
         }
 
+        function onSelectEnd( ){
+            this.children[0].scale.z = 0;
+            this.userData.selectPressed = false;
+            this.userData.selected = undefined;
+        }
+
+        function onSqueezeStart( ){
+            this.userData.squeezePressed = true;
+            if (this.userData.selected !== undefined ){
+                this.attach( this.userData.selected );
+                this.userData.attachedObject = this.userData.selected;
+            }
+        }
+
+        function onSqueezeEnd( ){
+            this.userData.squeezePressed = false;
+            if (this.userData.attachedObject !== undefined){
+                self.room.attach( this.userData.attachedObject );
+                this.userData.attachedObject = undefined;
+            }
+        }
+        
+        function onDisconnected(){
+            const index = this.userData.index;
+            console.log(`Disconnected controller ${index}`);
+            
+            if ( self.controllers ){
+                const obj = (index==0) ? self.controllers.right : self.controllers.left;
+                
+                if (obj){
+                    if (obj.controller){
+                        const controller = obj.controller;
+                        while( controller.children.length > 0 ) controller.remove( controller.children[0] );
+                        self.scene.remove( controller );
+                    }
+                    if (obj.grip) self.scene.remove( obj.grip );
+                }
+            }
+        }
+        
+        if (info.right !== undefined){
+            const right = this.renderer.xr.getController(0);
+            
+            let trigger = false, squeeze = false;
+            
+            Object.keys( info.right ).forEach( (key) => {
+                if (key.indexOf('trigger')!=-1) trigger = true;                   if (key.indexOf('squeeze')!=-1) squeeze = true;      
+            });
+            
+            if (trigger){
+                right.addEventListener( 'selectstart', onSelectStart );
+                right.addEventListener( 'selectend', onSelectEnd );
+            }
+
+            if (squeeze){
+                right.addEventListener( 'squeezestart', onSqueezeStart );
+                right.addEventListener( 'squeezeend', onSqueezeEnd );
+            }
+            
+            right.addEventListener( 'disconnected', onDisconnected );
+        }
+        
+        if (info.left !== undefined){
+            const left = this.renderer.xr.getController(1);
+            
+            let trigger = false, squeeze = false;
+            
+            Object.keys( info.left ).forEach( (key) => {
+                if (key.indexOf('trigger')!=-1) trigger = true;                   if (key.indexOf('squeeze')!=-1) squeeze = true;      
+            });
+            
+            if (trigger){
+                left.addEventListener( 'selectstart', onSelectStart );
+                left.addEventListener( 'selectend', onSelectEnd );
+            }
+
+            if (squeeze){
+                left.addEventListener( 'squeezestart', onSqueezeStart );
+                left.addEventListener( 'squeezeend', onSqueezeEnd );
+            }
+            
+            left.addEventListener( 'disconnected', onDisconnected );
+        }
     }
     
     handleController( controller ){
         if (controller.userData.selectPressed ){
+            controller.children[0].scale.z = 10;
+
             this.workingMatrix.identity().extractRotation( controller.matrixWorld );
 
             this.raycaster.ray.origin.setFromMatrixPosition( controller.matrixWorld );
@@ -189,6 +291,8 @@ class App{
             if (intersects.length>0){
                 intersects[0].object.add(this.highlight);
                 this.highlight.visible = true;
+                controller.children[0].scale.z = intersects[0].distance;
+                controller.userData.selected = intersects[0].object;
             }else{
                 this.highlight.visible = false;
             }
@@ -202,8 +306,24 @@ class App{
     }
     
 	render( ) {   
-        this.stats.update();
-        if (this.controller ) this.handleController( this.controller );
+        const dt = this.clock.getDelta();
+        
+        if (this.renderer.xr.isPresenting){
+            const self = this; 
+            if (this.controllers ){
+                Object.values( this.controllers).forEach( ( value ) => {
+                    self.handleController( value.controller );
+                });
+            } 
+            if (this.elapsedTime===undefined) this.elapsedTime = 0;
+            this.elapsedTime += dt;
+            if (this.elapsedTime > 0.3){
+                this.updateGamepadState();
+                this.elapsedTime = 0;
+            }
+        }else{
+            this.stats.update();
+        }
         this.renderer.render( this.scene, this.camera );
     }
 }
