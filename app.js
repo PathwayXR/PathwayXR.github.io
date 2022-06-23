@@ -15,7 +15,7 @@ class App{
         this.clock = new THREE.Clock();
         
 		this.camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 100 );
-		this.camera.position.set( 0, 1.6, 3 );
+		this.camera.position.set( 14, 10.6, 25 );
         
 		this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color( 0x505050 );
@@ -32,6 +32,15 @@ class App{
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         
 		container.appendChild( this.renderer.domElement );
+
+        const geometry = new THREE.TorusKnotBufferGeometry( 0.8, 0.3, 120, 16 ); 
+        
+        const material = new THREE.MeshPhongMaterial( { color: 0X0000FF, specular: 
+        0x444444, shininess: 60 });
+
+        this.mesh = new THREE.Mesh( geometry, material );
+        
+        this.scene.add(this.mesh);
         
         this.controls = new OrbitControls( this.camera, this.renderer.domElement );
         this.controls.target.set(0, 1.6, 0);
@@ -49,6 +58,8 @@ class App{
         window.addEventListener('resize', this.resize.bind(this) );
         
         this.renderer.setAnimationLoop( this.render.bind(this) );
+
+        
 	}	
     
     random( min, max ){
@@ -59,7 +70,7 @@ class App{
         this.radius = 0.08;
         
         this.room = new THREE.LineSegments(
-					new BoxLineGeometry( 6, 6, 6, 10, 10, 10 ),
+					new BoxLineGeometry( 16, 6, 16, 10, 10, 10, 10, 20, 100 ),
 					new THREE.LineBasicMaterial( { color: 0x808080 } )
 				);
         this.room.geometry.translate( 0, 3, 0 );
@@ -204,6 +215,8 @@ class App{
 	render( ) {   
         this.stats.update();
         if (this.controller ) this.handleController( this.controller );
+        this.renderer.render( this.scene, this.camera );
+        this.mesh.rotateY( 0.01 );
         this.renderer.render( this.scene, this.camera );
     }
 }
